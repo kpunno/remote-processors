@@ -1,0 +1,14 @@
+Gtk-Message: 09:49:02.349: Failed to load module "pk-gtk-module"
+Gtk-Message: 09:49:02.388: Failed to load module "pk-gtk-module"
+Gtk-Message: 11:11:25.212: Failed to load module "pk-gtk-module"
+Gtk-Message: 11:11:25.251: Failed to load module "pk-gtk-module"
+Gtk-Message: 11:53:24.754: Failed to load module "pk-gtk-module"
+Gtk-Message: 11:53:24.794: Failed to load module "pk-gtk-module"
+Gtk-Message: 15:50:25.680: Failed to load module "pk-gtk-module"
+Gtk-Message: 15:50:25.719: Failed to load module "pk-gtk-module"
+
+(gedit:929441): Gtk-WARNING **: 11:59:55.470: cannot open display: localhost:11.0
+Gtk-Message: 12:00:42.185: Failed to load module "pk-gtk-module"
+Gtk-Message: 12:00:42.223: Failed to load module "pk-gtk-module"
+Gtk-Message: 13:40:31.228: Failed to load module "pk-gtk-module"
+Gtk-Message: 13:40:31.266: Failed to load module "pk-gtk-module"

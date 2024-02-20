@@ -1,0 +1,173 @@
+#!/bin/bash
+#
+# autoifunc :: PoC of automatic ifunc build tool
+#
+# Chris Tyler 2022.11.25
+# Copyright (C)2022 Seneca College
+# Licensed under the terms of the GPL version 2+
+# See the file COPYING or LICENSE for details
+#
+
+FILE_F="$1"
+
+echo
+echo "* Auto-ifunc Tool v 0.001"
+echo "> Input file: '${FILE_F}'"
+
+if [ "${FILE_F}" == "" ]
+then
+	echo "$(basename $0): Error: no input file specified." >&2
+	exit 4
+fi
+
+if grep -q "\.c$" <<< "${FILE_F}" &>/dev/null
+then
+	:
+else
+	echo "$(basename $0): Error: Input file does not have .c extension." >&2
+	exit 5
+fi
+
+# Check that the file appears to contain C code.
+
+if file "$FILE_F" |& grep -q "C source" &>/dev/null
+then
+	echo "> Input file does appear to contain C source."
+else
+	echo "$(basename $0): Error: input file is not C source" >&2
+	exit 1
+fi
+
+# See if the functions are vectorizable, and if sve != sve2 output
+
+# See if we're using variable-length vectors
+# If not, then sve/sve2 is being built using simd
+# or not auto-vectorized, and there's no point using ifunc and autovec
+if for ARCH in "armv8-a+sve" "armv8-a+sve2"
+do
+        gcc -O3 -S -march="${ARCH}" -fopt-info-vec-all "${FILE_F}" -o -
+done |& grep -q "optimized: loop vectorized using variable length vectors"
+then
+        echo "> Vectorization using SVE/SVE2 is being applied."
+else
+        echo "$(basename $0): Nothing to auto-vectorize. Stopping." >&2
+        exit 6
+fi
+
+# See if the sve and sve2 versions are significantly different
+# There will be some minor variations (e.g., incb instruction) in any case,
+# so look for lines that are different and reference sve vector registers 
+NEED_SVE2=0
+TEMP_SVE="$(mktemp)"
+TEMP_SVE2="$(mktemp)"
+gcc -O3 -S -march=armv8-a+sve  "${FILE_F}" -o "${TEMP_SVE}"
+gcc -O3 -S -march=armv8-a+sve2 "${FILE_F}" -o "${TEMP_SVE2}"
+if diff "${TEMP_SVE}" "${TEMP_SVE2}" | grep -q "[[:space:]]z[[:digit:]]\+" | grep -v "[[:space:]]mov"
+then
+        echo "> SVE2 optimizations are significantly different from the SVE optimizations,"
+        echo "  building both versions."
+        NEED_SVE2=1
+else
+        echo "> SVE2 optimizations are basically the same as the SVE optimizations, skipping."
+fi
+rm "${TEMP_SVE}" "${TEMP_SVE2}" &> /dev/null
+
+
+echo "> Compiling input file to assembly to get function names."
+
+FUNC_NAMES=($(gcc -S "${FILE_F}" -o - | sed -n "s/^.*\.type[[:space:]]\+\([^,]\+\)\+, %function.*$/\1/p"))
+
+for I in "${!FUNC_NAMES[@]}"
+do
+	echo "> Function #$((I + 1)): ${FUNC_NAMES[$I]}"
+done
+
+
+TEMP_C="$(mktemp)"
+cp "${FILE_F}" "${TEMP_C}.c"
+makeheaders "${TEMP_C}.c"
+
+# TODO: Check that the function prototypes and function names match, 
+# or at least the count is the same
+
+echo "> Writing output file."
+FILE_OUT="${FILE_F/.c/_ifunc.c}"
+
+(echo "#include <sys/auxv.h>
+#include <stdio.h>
+"
+
+# Rewrite function prototypes with attributes to create indirect functions
+for FUNC_NAME in "${FUNC_NAMES[@]}"
+do
+	FUNC_PROTO="$(egrep " ${FUNC_NAME}\(" "${TEMP_C}.h"|sed "s/;[[:space:]]*$//")"
+	echo "${FUNC_PROTO} __attribute__(( ifunc(\"${FUNC_NAME}__resolver\") ));"
+done
+echo
+
+# Insert modified versions of the functions ----------------------------------
+TEMP_F="$(mktemp)"
+
+if [ "${NEED_SVE2}" -eq 1 ]
+then
+cp "${FILE_F}" "${TEMP_F}"
+echo "#pragma GCC target \"arch=armv8-a+sve2\""
+for FUNC_NAME in "${FUNC_NAMES[@]}"
+do
+	sed -i "s/${FUNC_NAME}/${FUNC_NAME}__sve2/" "${TEMP_F}"
+done
+cat "${TEMP_F}"
+fi
+
+cp "${FILE_F}" "${TEMP_F}"
+echo "#pragma GCC target \"arch=armv8-a+sve\""
+for FUNC_NAME in "${FUNC_NAMES[@]}"
+do
+	sed -i "s/${FUNC_NAME}/${FUNC_NAME}__sve/" "${TEMP_F}"
+done
+cat "${TEMP_F}"
+echo
+
+cp "${FILE_F}" "${TEMP_F}"
+echo "#pragma GCC target \"arch=armv8-a\""
+for FUNC_NAME in "${FUNC_NAMES[@]}"
+do
+	sed -i "s/${FUNC_NAME}/${FUNC_NAME}__asimd/" "${TEMP_F}"
+done
+cat "${TEMP_F}"
+
+rm "${TEMP_F}"
+
+# Insert revolver functions
+for FUNC_NAME in "${FUNC_NAMES[@]}"
+do
+echo "static void (*${FUNC_NAME}__resolver(void)) {
+        long hwcaps  = getauxval(AT_HWCAP);"
+if [ "${NEED_SVE2}" -eq 1 ]
+then
+	echo "        long hwcaps2 = getauxval(AT_HWCAP2);"
+fi
+echo 
+
+if [ "${NEED_SVE2}" -eq 1 ]
+then
+	echo -n "	if (hwcaps2 & HWCAP2_SVE2) {
+                return ${FUNC_NAME}__sve2;
+        } else "
+	
+fi
+
+echo " if (hwcaps & HWCAP_SVE) {
+                return ${FUNC_NAME}__sve;
+        } else {
+                return ${FUNC_NAME}__asimd;
+        }
+};"
+done
+
+echo 
+) > ${FILE_OUT}
+
+echo "> Output file ${FILE_OUT} has been created. Use this in place of ${FILE_F} in your build."
+echo
+

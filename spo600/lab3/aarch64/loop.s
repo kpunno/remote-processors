@@ -1,24 +1,43 @@
  .text
  .globl _start
- min = 0                          /* starting value for the loop index; **note that this is a symbol (constant)**, not a variable */
- max = 10                         /* loop exits when the index hits this number (loop condition is i<max) */
+ min = 0                        /* starting value for the loop index; */
+ max = 30                       /* loop exits when the index hits this number */
+ mod = 10			/* divide by this to get quotient and remainder */  
  _start:
 	mov     x19, min	/* initial value of loop counter into r19 */
+	mov	x20, mod	/* x20 is constant 10 */
  loop:
-	add	x15, x19, 0x30	/* add 48 to convert to char value */
-	adr	x14, msg+6	/* save this to msg, msg+6 is an immediate 
-				   value, the 6th position of msg 
-				*/
-	strb	w15, [x14]	/* we use 'w', instead of 'x'
-				   this indicates that we want 1 byte stored
-				   store it not into the register, but the
-				   address that is pointed to by the register
-				   indicated by the square brackets [].
-				*/
-/*	
-	str	x15, msg+6	   we can't do this!
-'str' puts it into a memory location pointed at another register, we cannot put it directly into a register. we must prep a register with the address that we want to store this in.
-/*
+	// try this:
+	/* divide x19 by 10: 
+		if: quotient is zero, 1st byte is whitespace
+		otherwise, quotient is first position, remainder is second position
+		in any case: remainder is the second byte
+	*/
+	udiv	x21, x19, x20		/* place into r21, r19 / r20 (r19 is iteration, r20 is 10
+					   when x19 is less than 10, x21 is 0
+					*/
+	cmp	x19, #10
+	b.lt	one_digit		/* quotient was one, branch */
+
+/* quotient was not zero */
+
+	/* get remainder, e.g. 24th iteration...
+	/*      x19 - (x20 * x21) */
+	/* _4_ = 24 - ( 10 *   2) */
+	
+	msub	x22, x20, x21, x19
+ 
+	/* store in x15,  */
+	add	x15, x21, #48		/* bump value to char value */
+	adr	x14, msg+6		/* address */
+	strb	w15, [x14]
+
+	/* second char */		/* bump value to char value */
+	add	x16, x22, #48
+	adr	x14, msg+7		/* address  */
+	strb	w16, [x14]
+
+continue:
 
 	/* print the message */
 	mov	x0, 1		/* file descriptor: 1 is stdout */
@@ -37,6 +56,17 @@
 	mov     x8, 93          /* exit is syscall #93 */
 	svc     0               /* invoke syscall */
 
+one_digit:
+	mov	x15, #32
+	adr	x14, msg+6
+	strb	w15, [x14]
+
+	add	x16, x19, 0x30
+	adr	x14, msg+7
+	strb	w16, [x14]
+	b	continue
+	
+
 .data
-msg:	.ascii	"Loop: #\n"
+msg:	.ascii	"Loop: ##\n"
 len=	. - msg

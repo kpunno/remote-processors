@@ -17,7 +17,7 @@
 					   when x19 is less than 10, x21 is 0
 					*/
 	cmp	x19, #10
-	b.lt	one_digit		/* quotient was one, branch */
+	b.lt	lt_10			/* quotient was 0, branch */
 
 /* quotient was not zero */
 
@@ -37,7 +37,7 @@
 	adr	x14, msg+7		/* address  */
 	strb	w16, [x14]
 
-continue:
+lt10_continue:
 
 	/* print the message */
 	mov	x0, 1		/* file descriptor: 1 is stdout */
@@ -56,7 +56,7 @@ continue:
 	mov     x8, 93          /* exit is syscall #93 */
 	svc     0               /* invoke syscall */
 
-one_digit:
+lt_10:
 	mov	x15, #32
 	adr	x14, msg+6
 	strb	w15, [x14]
@@ -64,8 +64,9 @@ one_digit:
 	add	x16, x19, 0x30
 	adr	x14, msg+7
 	strb	w16, [x14]
-	b	continue
+	b	lt10_continue
 	
+gt_10:
 
 .data
 msg:	.ascii	"Loop: ##\n"

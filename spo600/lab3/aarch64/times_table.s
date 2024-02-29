@@ -1,0 +1,69 @@
+ .text
+ .globl _start
+ inner = 1                        /* starting value for the loop index; */
+ outer = 1
+ max =   13                       /* loop exits when the index hits this number */
+ mod =   10			/* divide by this to get quotient and remainder */
+ _start:
+	mov	x18, inner	/* initial value of inner loop -> r18 */
+	mov     x19, outer	/* initial value of outer loop -> r19 */
+	mov	x20, mod	/* x20 is constant 10 */
+
+ outer_loop:
+	
+
+ inner_loop:
+	udiv	x21, x19, x20		/* place into r21, r19 / r20 (r19 is iteration, r20 is 10
+					   when x19 is less than 10, x21 is 0
+					*/
+	cmp	x19, #10
+	b.lt	lt_10			/* quotient was 0, branch */
+
+/* quotient was not zero */
+	
+	msub	x22, x20, x21, x19
+ 
+	/* store in x15,  */
+	add	x15, x21, #48		/* bump value to char value */
+	adr	x14, msg+5		/* address */
+	strb	w15, [x14]
+
+	/* second char */		/* bump value to char value */
+	add	x16, x22, #48
+	adr	x14, msg+6		/* address  */
+	strb	w16, [x14]
+
+ continue:
+
+	/* print the message */
+	mov	x0, 1		/* file descriptor: 1 is stdout */
+	adr	x1, msg		/* message loc (address) */
+	mov	x2, len_msg     /* message len (bytes) */
+
+	mov	x8, 64		/* write is syscall #64 */
+	svc	0		/* invoke syscall */
+
+	/* continue the loop */
+	add     x19, x19, 1
+	cmp     x19, max
+	b.ne    inner_loop
+
+	mov     x0, 0           /* status -> 0 */
+	mov     x8, 93          /* exit is syscall #93 */
+	svc     0               /* invoke syscall */
+
+ lt_10:
+	mov	x15, #32
+	adr	x14, msg+5
+	strb	w15, [x14]
+
+	add	x16, x19, 0x30
+	adr	x14, msg+6
+	strb	w16, [x14]
+	b	continue
+
+.data
+msg:	.ascii	"## x ## = ##\n\0"	/* times table string */
+len_msg=	. - msg
+brk:	.ascii	"------------\n\0"	/* line break */
+len_brk=	. - brk

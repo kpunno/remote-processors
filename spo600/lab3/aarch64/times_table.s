@@ -55,33 +55,64 @@
 	b.eq	inner_loop
 
  continue:
+
+	/* multiply and write result to message */
+
 	mul	x29, x19, x20		/* multiple inner loop iter, outer loop iter */
 	mov	x21, #100		/* make divisor 100 */
-	udiv	x22, x29, x21		/* x22 = multiple / divisor = quotient */
-
-	cmp	x22, #0			/* if there is NO quotient, */
-	b.eq	rslt_lt_100		/* 	result is less than 100 */
-
- /* result >= 100 */
-
+	udiv	x22, x29, x21		/* x22 = multiple / divisor = quotient (1) */
+	/* x22 holds quotient of division by 100 */
 	msub	x28, x21, x22, x29 	/* remainder - (divisor * quotient)
-					   eg. 29 = 129 - (100 * 1)
-					*/
-	/* write quotient */
-	add	x15, x22, #48
-	adr	x14, msg+10
-	strb	w15, [x14]
-	
-	udiv	x22, x29, x21		/* should now contain a new quotient */
-	cmp	x22, #0			/* compare if quotient is 0 */
-	b.eq	rslt_lt_10		/* then remainder is less than 10 */
-
- rslt_lt_100:	
- 
- rslt_lt_10:
-
+	/* x28 holds remainder of division by 100 */
 	mov	x21, #10
+	udiv	x27, x28, x21		/* x27 = remainder / divisor = quotient (2) */
+	msub	x28, x21, x27, x28
 
+	/* write to message addresses as before */	
+
+/* don't forget to do { add x15, x22, #48 } to make it a char */
+
+	adr	x14, msg+10	/* msg pos 1 */
+
+	cmp	x22, #0
+	b.eq	suppress_1	
+	/* write */
+	add	x15, x22, #48
+	strb	w15, [x14]
+
+ 	b	end1
+ suppress_1:
+	/* suppress */
+	mov	x15, #32
+	strb	w15, [x14] 	
+
+ end1:
+	/* done */
+	adr	x14, msg+11	/* msg pos 2 */
+
+	cmp	x22, #1
+	b.eq	skip
+
+	cmp	x27, #0
+	b.eq	suppress_2
+	
+ skip:
+	add	x15, x27, #48
+	strb	w15, [x14] 	
+
+ 	b	end2
+ suppress_2:
+
+	mov	x15, #32
+	strb	w15, [x14]	
+
+ end2:
+	adr	x14, msg+12	/* msg pos 3 */
+
+	add	x15, x28, #48
+	strb	w15, [x14]
+
+ return:
 	/* print the message */
 	mov	x0, 1		/* file descriptor: 1 is stdout */
 	adr	x1, msg		/* message loc (address) */
@@ -89,6 +120,8 @@
 
 	mov	x8, 64		/* write is syscall #64 */
 	svc	0		/* invoke syscall */
+
+	mov	x21, #10	/* restore original divisor */
 
 	/* continue the loop */
 	add     x20, x20, 1
@@ -128,6 +161,18 @@
 	b.eq	inner_loop
 
 	b	continue	/* continue to print */
+
+/* if first quotient is zero, suppress position */
+ suppress:
+	mov	x15, #32
+	strb	w15, [x14]
+	ret
+
+/* if first quotient is not zero, write positions */
+ write:
+	add	x15, x22, #48
+	strb	w15, [x14]
+	ret
 
 .data
 msg:	.ascii	"## x ## =    \n\0"	/* times table string */
